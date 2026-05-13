@@ -1,0 +1,52 @@
+from flask import Flask, request, jsonify
+import csv
+
+app = Flask(__name__)
+
+CSV_FILE_PATH = 'player_stats.csv' 
+
+@app.route('/api/player', methods=['GET'])
+def get_player_stats():
+    player_name = request.args.get('name')
+    
+    if not player_name:
+        return jsonify({
+            "error": "Bad Request",
+            "message": "Vui lòng cung cấp tên cầu thủ qua tham số 'name'"
+        }), 400
+
+    try:
+        with open(CSV_FILE_PATH, mode='r', encoding='utf-8') as file:
+            reader = csv.reader(file)
+            
+            headers = next(reader) 
+            
+            for row in reader:
+                if len(row) > 1 and player_name.lower() in row[1].lower():
+                    
+                    player_data = dict(zip(headers, row))
+                    
+                    return jsonify({
+                        "status": "success",
+                        "data": player_data
+                    }), 200
+                    
+        return jsonify({
+            "status": "not_found",
+            "message": f"Không tìm thấy dữ liệu cho cầu thủ: {player_name}"
+        }), 404
+
+    except FileNotFoundError:
+        return jsonify({
+            "error": "Internal Server Error",
+            "message": "Không tìm thấy file CSV. Vui lòng đảm bảo Câu 1 đã chạy và lưu file thành công."
+        }), 500
+        
+    except Exception as e:
+        return jsonify({
+            "error": "Internal Server Error",
+            "message": str(e)
+        }), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
