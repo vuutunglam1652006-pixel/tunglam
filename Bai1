@@ -1,0 +1,82 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+import time
+
+def scrape_fbref_epl_players():
+    url = "https://fbref.com/en/comps/9/stats/Premier-League-Stats"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+    
+    print(f"Đang tải dữ liệu từ {url}...")
+    
+    try:
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", 60))
+            print(f"Bị giới hạn request (Rate-limit). Cần đợi {retry_after} giây...")
+            time.sleep(retry_after)
+            response = requests.get(url, headers=headers)
+            
+        response.raise_for_status()
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Lỗi khi kết nối: {e}")
+        return
+
+    soup = BeautifulSoup(response.content, "html.parser")
+    table = soup.find("table", {"id": "stats_standard"})
+    
+    if not table:
+        print("Không tìm thấy bảng dữ liệu. Có thể cấu trúc HTML đã thay đổi hoặc dữ liệu bị ẩn dưới dạng comment.")
+        return
+
+    thead = table.find("thead")
+    header_rows = thead.find_all("tr")
+    cols_header = header_rows[1].find_all("th")
+    
+    stat_names = [col.get("data-stat") for col in cols_header if col.get("data-stat") not in ['ranker', 'matches']]
+    
+    csv_filename = "epl_players_stats_2025_2026.csv"
+    with open(csv_filename, mode="w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        
+        headers_to_write = ["STT", "Player"] + [stat for stat in stat_names if stat != "player"]
+        writer.writerow(headers_to_write)
+        
+        tbody = table.find("tbody")
+        rows = tbody.find_all("tr", class_=lambda x: x != "thead")
+        
+        index = 1
+        for row in rows:
+            minutes_cell = row.find(attrs={"data-stat": "minutes"})
+            minutes_str = minutes_cell.text.strip().replace(",", "") if minutes_cell else "0"
+            minutes = int(minutes_str) if minutes_str.isdigit() else 0
+            
+            if minutes > 90:
+                player_name_cell = row.find(attrs={"data-stat": "player"})
+                player_name = player_name_cell.text.strip() if player_name_cell else "N/a"
+                
+                row_data = [index, player_name]
+                
+                for stat in stat_names:
+                    if stat == "player": 
+                        continue
+                        
+                    cell = row.find(attrs={"data-stat": stat})
+                    if cell:
+                        value = cell.text.strip()
+                        row_data.append(value if value != "" else "N/a")
+                    else:
+                        row_data.append("N/a")
+                
+                writer.writerow(row_data)
+                index += 1
+
+    print(f"Hoàn thành! Dữ liệu đã được lưu vào file: {csv_filename}")
+
+if __name__ == "__main__":
+    scrape_fbref_epl_players()
